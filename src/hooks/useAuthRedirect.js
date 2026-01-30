@@ -17,12 +17,9 @@ export function useAuthRedirect({ requireAuth = false } = {}) {
 
         if (ignore) return;
 
-        // Protected page
         if (requireAuth && !user) {
           router.replace("/login");
         }
-
-        // Public page
         if (!requireAuth && user) {
           router.replace("/dashboard");
         }
