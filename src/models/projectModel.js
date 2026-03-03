@@ -20,6 +20,14 @@ const projectSchema = new mongoose.Schema(
       enum: ["Beginner", "Intermediate", "Advanced"],
       required: true,
     },
+    githubRepoOwner: {
+      type: String,
+      default: null,
+    },
+    githubRepoName: {
+      type: String,
+      default: null,
+    },
     ownerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -29,6 +37,28 @@ const projectSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
+      },
+    ],
+    joinRequests: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        status: {
+          type: String,
+          enum: ["pending", "accepted", "rejected"],
+          default: "pending",
+        },
+        message: {
+          type: String,
+          default: "",
+        },
+        requestedAt: {
+          type: Date,
+          default: Date.now,
+        },
       },
     ],
     isOpen: {

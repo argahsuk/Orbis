@@ -13,7 +13,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, LogIn } from "lucide-react";
+import { LogOut, LogIn, Bell, Trash2 } from "lucide-react";
 import Image from "next/image";
 export function Header() {
   const router = useRouter();
@@ -22,7 +22,9 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [user, setUser] = useState(null);
-const navRef = useRef(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const navRef = useRef(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -51,15 +53,87 @@ useEffect(() => {
           setUser(null);
         } else {
           const data = await res.json();
-          setUser(data?.username || null);
+          setUser(data );
+          fetchNotifications();
         }
       } catch {
         setUser(null);
       }
     }
+
+    async function fetchNotifications() {
+      try {
+        const res = await fetch("/api/notifications");
+        if (res.ok) {
+           const data = await res.json();
+           setNotifications(data);
+           setUnreadCount(data.filter(n => !n.read).length);
+        }
+      } catch (err) {
+        console.error("Failed to fetch notifications", err);
+      }
+    }
+
     setMobileOpen(false);
     fetchUser();
   }, [pathname]);
+
+  const markAllAsRead = async () => {
+     try {
+        const res = await fetch("/api/notifications", {
+           method: "PUT",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ markAllRead: true })
+        });
+        if (res.ok) {
+           setNotifications(notifications.map(n => ({ ...n, read: true })));
+           setUnreadCount(0);
+        }
+     } catch (err) {
+        console.error("Failed to mark notifications as read", err);
+     }
+  };
+
+  const handleNotificationAction = async (notif, action) => {
+     try {
+         // Assuming project ID and senderId are available on the notification
+         const res = await fetch(`/api/projects/${notif.projectId}/requests/${notif._id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: action, isFromNotification: true, senderId: notif.senderId?._id || notif.senderId })
+         });
+         
+         if (res.ok) {
+            // Mark notification as read and remove action buttons
+            const updateRes = await fetch("/api/notifications", {
+               method: "PUT",
+               headers: { "Content-Type": "application/json" },
+               body: JSON.stringify({ notificationId: notif._id })
+            });
+
+            if(updateRes.ok) {
+               setNotifications(notifications.map(n => n._id === notif._id ? { ...n, read: true, type: "system", message: `Request ${action}ed successfully.` } : n));
+               setUnreadCount(prev => Math.max(0, prev - 1));
+            }
+         }
+     } catch (err) {
+         console.error(`Failed to ${action} request`, err);
+     }
+  };
+
+  const handleDeleteNotification = async (id) => {
+     try {
+        const res = await fetch(`/api/notifications?id=${id}`, {
+           method: "DELETE",
+        });
+        if (res.ok) {
+           setNotifications(prev => prev.filter(n => n._id !== id));
+           setUnreadCount(prev => notifications.find(n => n._id === id && !n.read) ? Math.max(0, prev - 1) : prev);
+        }
+     } catch (err) {
+        console.error("Failed to delete notification", err);
+     }
+  };
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", {
@@ -168,6 +242,86 @@ backdrop-blur-md px-6"
               </span>
             </label>
 
+            {user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative rounded-full hover:bg-black/5 dark:hover:bg-white/10">
+                    <Bell className="size-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full border border-white dark:border-black animate-pulse"></span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 max-h-[400px] overflow-y-auto">
+                   <div className="flex items-center justify-between px-2 py-2">
+                      <DropdownMenuLabel className="p-0">Notifications</DropdownMenuLabel>
+                      {unreadCount > 0 && (
+                         <Button variant="ghost" size="sm" onClick={markAllAsRead} className="h-auto p-1 text-xs text-primary">
+                            Mark all as read
+                         </Button>
+                      )}
+                   </div>
+                   <DropdownMenuSeparator />
+                   {notifications.length === 0 ? (
+                      <div className="py-4 text-center text-sm text-muted-foreground">No new notifications</div>
+                   ) : (
+                      notifications.map(notif => (
+                         <DropdownMenuItem key={notif._id} asChild className="p-0 cursor-default">
+                            <div className={`relative flex flex-col items-start p-3 gap-2 w-full ${!notif.read ? "bg-primary/5 border-l-2 border-primary" : ""}`}>
+                               <div className="flex flex-col items-start gap-1 w-full pr-8">
+                                  {notif.senderId && (
+                                     <Link 
+                                        href={`/profile/${notif.senderId._id || notif.senderId}`} 
+                                        className="flex items-center gap-2 mb-1 hover:underline"
+                                     >
+                                        <Avatar className="size-5">
+                                           <AvatarFallback className="text-[10px] bg-secondary/80">
+                                              {notif.senderId.username?.charAt(0)?.toUpperCase() || "U"}
+                                           </AvatarFallback>
+                                        </Avatar>
+                                        <span className="text-xs font-semibold text-primary">{notif.senderId.username || notif.senderId.name}</span>
+                                     </Link>
+                                  )}
+                                  <span className="text-sm font-medium leading-none">{notif.message}</span>
+                                  <span className="text-xs text-muted-foreground">{new Date(notif.createdAt).toLocaleDateString()}</span>
+                               </div>
+                               
+                               <Button 
+                                  variant="ghost" 
+                                  size="icon" 
+                                  className="absolute right-2 top-2 h-6 w-6 text-muted-foreground hover:text-destructive z-10"
+                                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteNotification(notif._id); }}
+                               >
+                                  <Trash2 className="size-4" />
+                               </Button>
+                               
+                               {notif.type === "new_request" && !notif.read && (
+                                  <div className="flex gap-2 w-full mt-2">
+                                     <Button 
+                                        size="sm" 
+                                        className="h-7 text-xs flex-1 z-10" 
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNotificationAction(notif, "accept"); }}
+                                     >
+                                        Accept
+                                     </Button>
+                                     <Button 
+                                        size="sm" 
+                                        variant="outline" 
+                                        className="h-7 text-xs flex-1 border-destructive text-destructive hover:bg-destructive/10 z-10"
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNotificationAction(notif, "reject"); }}
+                                     >
+                                        Decline
+                                     </Button>
+                                  </div>
+                               )}
+                            </div>
+                         </DropdownMenuItem>
+                      ))
+                   )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -177,11 +331,11 @@ backdrop-blur-md px-6"
                   <Avatar className="size-7">
                     <AvatarImage src={user?.avatar || null} />
                     <AvatarFallback className="text-xs font-bold">
-                      {user ? user?.charAt(0)?.toUpperCase() : "U"}
+                      {user ? user?.username.charAt(0)?.toUpperCase() : "U"}
                     </AvatarFallback>
                   </Avatar>
                   <span className="hidden sm:inline text-sm font-medium">
-                    {user ? user?.split(" ")[0] : "User"}
+                    {user ? user?.username.split(" ")[0] : "User"}
                   </span>
                 </Button>
               </DropdownMenuTrigger>
@@ -192,7 +346,7 @@ backdrop-blur-md px-6"
                     <DropdownMenuLabel>My Account</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <Link href="/profile">Profile</Link>
+                      <Link href={`/profile/${user._id}`}>Profile</Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/projects/create">Create Project</Link>

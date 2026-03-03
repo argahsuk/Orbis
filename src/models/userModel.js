@@ -30,6 +30,18 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    githubId: {
+      type: String,
+      default: null,
+    },
+    githubUsername: {
+      type: String,
+      default: null,
+    },
+    githubAccessToken: {
+      type: String,
+      default: null,
+    },
     createdProjects: [
       {
         type: mongoose.Schema.Types.ObjectId,

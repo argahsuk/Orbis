@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 export function useAuthRedirect({ requireAuth = false } = {}) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     let ignore = false;
@@ -13,15 +14,16 @@ export function useAuthRedirect({ requireAuth = false } = {}) {
     async function checkUser() {
       try {
         const res = await fetch("/api/auth/me", { credentials: "include" });
-        const user = await res.json();
+        const userData = await res.json();
 
         if (ignore) return;
 
-        if (requireAuth && !user) {
+        if (requireAuth && !userData) {
           router.replace("/login");
-        }
-        if (!requireAuth && user) {
+        } else if (!requireAuth && userData) {
           router.replace("/dashboard");
+        } else {
+          setUser(userData);
         }
       } catch {
         if (requireAuth) router.replace("/login");
@@ -37,5 +39,5 @@ export function useAuthRedirect({ requireAuth = false } = {}) {
     };
   }, [router, requireAuth]);
 
-  return loading;
+  return { loading, user };
 }
